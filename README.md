@@ -172,6 +172,7 @@ python scripts/09_quenched_simulation.py   # tens of minutes
 python scripts/10_marginal_and_robustness.py
 python scripts/11_figures.py
 python scripts/12_tables.py
+python scripts/13_graphical_abstract.py
 ```
 
 Each writes a JSON record to `data/`. Every table in the paper is generated from
