@@ -1,0 +1,173 @@
+{
+ "component_width": "0.25",
+ "scan": [
+  {
+   "a_over_s": "0.0",
+   "p0": "1.595769122",
+   "c": "5.092958795",
+   "positive": true
+  },
+  {
+   "a_over_s": "0.2",
+   "p0": "1.564170776",
+   "c": "4.891933695",
+   "positive": true
+  },
+  {
+   "a_over_s": "0.4",
+   "p0": "1.473080561",
+   "c": "4.320186536",
+   "positive": true
+  },
+  {
+   "a_over_s": "0.6",
+   "p0": "1.332898412",
+   "c": "3.464451195",
+   "positive": true
+  },
+  {
+   "a_over_s": "0.8",
+   "p0": "1.158766211",
+   "c": "2.4474082",
+   "positive": true
+  },
+  {
+   "a_over_s": "1.0",
+   "p0": "0.9678828981",
+   "c": "1.40169211",
+   "positive": true
+  },
+  {
+   "a_over_s": "1.2",
+   "p0": "0.7767442199",
+   "c": "0.4446364495",
+   "positive": true
+  },
+  {
+   "a_over_s": "1.4",
+   "p0": "0.5989098625",
+   "c": "-0.3400343695",
+   "positive": false
+  },
+  {
+   "a_over_s": "1.6",
+   "p0": "0.4436833387",
+   "c": "-0.9102061581",
+   "positive": false
+  },
+  {
+   "a_over_s": "1.8",
+   "p0": "0.3158006332",
+   "c": "-1.263155913",
+   "positive": false
+  },
+  {
+   "a_over_s": "2.0",
+   "p0": "0.2159638661",
+   "c": "-1.42590704",
+   "positive": false
+  },
+  {
+   "a_over_s": "2.2",
+   "p0": "0.1418983714",
+   "c": "-1.442311876",
+   "positive": false
+  },
+  {
+   "a_over_s": "2.4",
+   "p0": "0.08957812118",
+   "c": "-1.360713532",
+   "positive": false
+  },
+  {
+   "a_over_s": "2.6",
+   "p0": "0.05433187693",
+   "c": "-1.224762777",
+   "positive": false
+  },
+  {
+   "a_over_s": "2.8",
+   "p0": "0.03166180633",
+   "c": "-1.068341142",
+   "positive": false
+  },
+  {
+   "a_over_s": "3.0",
+   "p0": "0.01772739365",
+   "c": "-0.9141892848",
+   "positive": false
+  }
+ ],
+ "order": [
+  {
+   "a_over_s": "0.5",
+   "monotonic": true,
+   "note": ""
+  },
+  {
+   "a_over_s": "1.0",
+   "monotonic": true,
+   "note": ""
+  },
+  {
+   "a_over_s": "1.5",
+   "monotonic": false,
+   "chiN_lo": "0.5851136523",
+   "chiN_hi": "0.6144143592",
+   "chiN_c": "0.6144143669",
+   "R_jump": "0.358459",
+   "R_high_at_lo": "0.156906",
+   "hysteresis_factor": "1.05008",
+   "note": "hysteretic over chiN in [0.585114, 0.614414]; the upper end is the threshold chiN_c = 0.614414, where the low branch ceases to exist and R jumps 1.628e-8 -> 0.3585; on the way down the high branch ends at R = 0.1569"
+  },
+  {
+   "a_over_s": "2.0",
+   "monotonic": false,
+   "chiN_lo": "0.8733512007",
+   "chiN_hi": "1.473903348",
+   "chiN_c": "1.473903445",
+   "R_jump": "0.848051",
+   "R_high_at_lo": "0.334276",
+   "hysteresis_factor": "1.68764",
+   "note": "hysteretic over chiN in [0.873351, 1.4739]; the upper end is the threshold chiN_c = 1.4739, where the low branch ceases to exist and R jumps 6.785e-9 -> 0.8481; on the way down the high branch ends at R = 0.3343"
+  },
+  {
+   "a_over_s": "2.5",
+   "monotonic": false,
+   "chiN_lo": "1.148248833",
+   "chiN_hi": "4.539941385",
+   "chiN_c": "4.539942225",
+   "R_jump": "0.977771",
+   "R_high_at_lo": "0.402408",
+   "hysteresis_factor": "3.9538",
+   "note": "hysteretic over chiN in [1.14825, 4.53994]; the upper end is the threshold chiN_c = 4.53994, where the low branch ceases to exist and R jumps 2.203e-9 -> 0.9778; on the way down the high branch ends at R = 0.4024"
+  }
+ ],
+ "sharpness": [
+  {
+   "a_over_s": "1.20",
+   "c": "0.4446364495",
+   "monotonic": true,
+   "verdict": "continuous"
+  },
+  {
+   "a_over_s": "1.28",
+   "c": "0.1067718848",
+   "monotonic": true,
+   "verdict": "continuous"
+  },
+  {
+   "a_over_s": "1.32",
+   "c": "-0.05049605842",
+   "monotonic": false,
+   "verdict": "fold, first order"
+  },
+  {
+   "a_over_s": "1.40",
+   "c": "-0.3400343695",
+   "monotonic": false,
+   "verdict": "fold, first order"
+  }
+ ],
+ "tricritical_a_over_s": "1.30692972772"
+}
