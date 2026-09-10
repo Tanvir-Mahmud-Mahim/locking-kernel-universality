@@ -71,7 +71,8 @@ def figure_universality():
     ax[0].plot([2.0], [1.0], "*", ms=11, color=RED, zorder=4,
                label="conservative spins")
     ax[0].axhline(0.5, color=GREY, lw=0.6, ls=":")
-    ax[0].axvline(3.0, color=GREY, lw=0.6, ls=":")
+    # the crossover marker is cut short of the legend rather than run through it
+    ax[0].plot([3.0, 3.0], [0.35, 2.1], color=GREY, lw=0.6, ls=":", zorder=0)
     ax[0].text(4.3, 0.57, "Kuramoto class", fontsize=6.5, color=GREY, ha="center")
     ax[0].set_xlabel(r"kernel tail exponent $s$")
     ax[0].set_ylabel(r"order-parameter exponent $\beta$")
@@ -123,7 +124,8 @@ def figure_universality():
     ax[2].plot(a_s, cc, "o-", ms=3.2, lw=1.1, color=BLUE, zorder=3)
     ax[2].axhline(0, color="k", lw=0.7)
     ax[2].axvline(xc, color=RED, lw=1.0, ls="--")
-    ax[2].text(0.12, 1.5, "continuous\n" + r"$\beta=1$", fontsize=7, color=BLUE)
+    ax[2].text(0.10, -1.55, "continuous\n" + r"$\beta=1$", fontsize=7,
+               color=BLUE)
     ax[2].text(2.05, 3.2, "first order\n(fold)", fontsize=7, color=RED)
     ax[2].annotate(f"tricritical\n$a/\\sigma={xc:.4f}$", xy=(xc, 0),
                    xytext=(1.62, 1.35), fontsize=6.4, color=RED,
@@ -162,7 +164,7 @@ def figure_disorder():
                        mk, ms=4.2, color=col, mfc="none", mew=1.1, zorder=4)
     ax[0].axvline(4.0, color=BLUE, lw=0.7, ls=":")
     ax[0].axvline(5.0, color=RED, lw=0.7, ls=":")
-    ax[0].text(3.5, 4.5, "same exponent:\ndisorder dominates", fontsize=6.2,
+    ax[0].text(3.44, 0.44, "same exponent:\ndisorder dominates", fontsize=6.2,
                ha="center", color="#333333")
     ax[0].text(4.05, 1.13, "$\\gamma=4$", fontsize=6.2, color=BLUE)
     ax[0].text(5.05, 0.56, "$\\gamma=5$", fontsize=6.2, color=RED)
@@ -221,7 +223,7 @@ def figure_disorder():
 # ---------------------------------------------------------------- figure 3 --
 def figure_convergence():
     mf = load("04_meanfield_check.json")
-    fig, ax = plt.subplots(1, 3, figsize=(7.2, 2.5), sharey=True)
+    fig, ax = plt.subplots(1, 3, figsize=(7.2, 2.75), sharey=True)
     panels = [("grid", "M_core", r"classes $M$", "(a)  detuning grid",
                [200, 400, 800, 1600]),
               ("time", "T", r"run length $T\gamma$", "(b)  run length",
@@ -248,12 +250,18 @@ def figure_convergence():
         ax[k].minorticks_off()
         ax[k].set_title(title, fontsize=8.5, loc="left")
     ax[0].set_ylabel(r"$|R_{\rm dyn}-R_{\rm law}|/R_{\rm law}$")
-    ax[0].legend(frameon=False, fontsize=6.3, loc="lower left", ncol=2,
-                 handlelength=1.3, borderaxespad=0.35, columnspacing=0.9)
-    ax[2].text(0.97, 0.93, "dotted: residual oscillation",
-               transform=ax[2].transAxes, fontsize=6.0, color=GREY,
-               ha="right", va="top")
-    fig.tight_layout(w_pad=0.8)
+
+    # One legend for the whole figure, placed above the panels, so that no
+    # entry can sit on top of a curve in any of the three.
+    handles = [matplotlib.lines.Line2D([], [], color=cols[r], marker="o",
+                                       ms=3.4, lw=0.9, label=f"$r={r}$")
+               for r in rs]
+    handles.append(matplotlib.lines.Line2D([], [], color=GREY, ls=":", lw=0.9,
+                                           label="dotted: residual oscillation"))
+    fig.tight_layout(w_pad=0.8, rect=(0, 0, 1, 0.90))
+    fig.legend(handles=handles, frameon=False, fontsize=6.6, ncol=5,
+               loc="upper center", bbox_to_anchor=(0.5, 1.005),
+               handlelength=1.5, columnspacing=1.5)
     save(fig, "fig3_convergence")
 
 

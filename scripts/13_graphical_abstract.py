@@ -87,13 +87,13 @@ def draw_cavity(ax):
     # the ensemble: each spin precesses about the cavity axis at its own
     # detuning, so the tilts differ; the ones that lock stay near the axis
     rng = np.random.default_rng(11)
-    xg = np.linspace(-1.55, 1.15, 4)
+    xg = np.linspace(-1.60, 0.75, 4)
     yg = np.array([0.18, 0.72])
     zg = np.array([-0.55, 0.20])
-    pts = [(x + rng.uniform(-0.14, 0.14), y + rng.uniform(-0.10, 0.10),
+    pts = [(x + rng.uniform(-0.12, 0.12), y + rng.uniform(-0.10, 0.10),
             z + rng.uniform(-0.12, 0.12))
            for x in xg for y in yg for z in zg]
-    L = 0.58
+    L = 0.50
     for k, (x0, y0, z0) in enumerate(pts):
         tilt = rng.uniform(0.18, 1.35)
         phase = rng.uniform(0, 2 * np.pi)
@@ -108,9 +108,9 @@ def draw_cavity(ax):
                   arrow_length_ratio=0.36, zorder=4)
 
     # the collective spin, along the cavity axis
-    ax.quiver(-1.45, 0.50, 0.80, 2.90, 0.0, 0.0, color=GREEN, lw=2.4,
+    ax.quiver(-1.50, 0.50, 0.78, 2.70, 0.0, 0.0, color=GREEN, lw=2.4,
               arrow_length_ratio=0.13, zorder=6)
-    ax.text(1.58, 0.50, 0.96, r"$\mathbf{S}$", color=GREEN, fontsize=11,
+    ax.text(1.42, 0.50, 0.62, r"$\mathbf{S}$", color=GREEN, fontsize=11,
             zorder=7)
 
     ax.set_xlim(-2.3, 2.3)
@@ -148,15 +148,21 @@ def main():
                color="#8a8a8a")
 
     # ---- (b) the two kernels
+    #
+    # The Kuramoto kernel is sqrt(1 - u^2) on |u| < 1 and identically zero
+    # outside, so on a logarithmic axis it cannot be drawn beyond u = 1 at all.
+    # It is sampled on a grid that closes on u = 1 from below, so that the
+    # curve falls continuously through the bottom of the axes instead of being
+    # joined to a drawn-in vertical segment: the plunge is the kernel, not an
+    # artefact of the drawing.
     axb = fig.add_subplot(gs[0, 1])
     u = np.logspace(-1.6, 1.6, 700)
     cons = np.array([float(K.conservative().W(x)) for x in u])
-    kur = np.array([float(K.kuramoto().W(x)) for x in u])
+    uk = np.concatenate([np.logspace(-1.6, np.log10(0.98), 400),
+                         1.0 - np.logspace(-2, -10, 220)])
+    kur = np.array([float(K.kuramoto().W(x)) for x in uk])
     axb.loglog(u, cons, color=RED, lw=1.4)
-    kur_masked = np.where(kur > 0, kur, np.nan)
-    axb.loglog(u, kur_masked, color=BLUE, lw=1.4)
-    axb.loglog([1.0, 1.0], [3e-4, float(K.kuramoto().W(0.999))], color=BLUE,
-               lw=1.4)
+    axb.loglog(uk, kur, color=BLUE, lw=1.4)
     axb.loglog(u[u > 2], 1.0 / u[u > 2] ** 2, color=GREY, lw=0.7,
                ls=(0, (4, 3)))
     axb.set_xlim(3e-2, 40)
@@ -165,9 +171,9 @@ def main():
     axb.set_xlabel(r"detuning $u$, in locked widths")
     axb.set_ylabel(r"locking kernel $W(u)$")
     axb.text(0.03, 0.93, "(b)", transform=axb.transAxes, fontsize=10)
-    axb.text(3.0, 0.22, r"$|u|^{-s}$", color=RED, fontsize=9)
-    axb.text(0.038, 0.0055, "compact\nsupport", color=BLUE, fontsize=8.5)
-    axb.text(0.30, 0.030, "precessing", color=RED, fontsize=8.5)
+    axb.text(2.6, 0.62, "precessing", color=RED, fontsize=8.5)
+    axb.text(2.6, 0.28, r"$|u|^{-s}$", color=RED, fontsize=9)
+    axb.text(0.055, 0.0055, "compact\nsupport", color=BLUE, fontsize=8.5)
 
     # ---- (c) the exponent
     axc = fig.add_subplot(gs[0, 2])
