@@ -109,7 +109,9 @@ hypergeometric) and checked against direct quadrature to **1e-15**.
 
 So the framework **reproduces the published scale free Kuramoto exponent**,
 beta = 1/(gamma-3) for 3 < gamma < 5 and 1/2 above [Lee, PRE 72, 026208 (2005)],
-to parts in 1e4, and **reproduces the degree dependent coupling family**
+to between 9e-5 and 5e-4 at gamma = 3.8, 4.4 and 5.5, and to 8.7e-3 at
+gamma = 3.4, which sits in the corner where the area under the averaged kernel
+is slowest to converge; and **reproduces the degree dependent coupling family**
 beta = eta/(gamma-2-eta) [Oh, Lee, Kahng & Kim, PRE 75, 011104 (2007)].
 
 It also **explains the crossover at gamma = 5**, which the literature reports

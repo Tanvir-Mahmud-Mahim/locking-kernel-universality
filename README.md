@@ -22,8 +22,8 @@ H(Omega)    = Omega * integral p(Omega u) W(u) du,
 
 an **exact parametric solution** for any frequency distribution and any kernel.
 Sweeping `Omega` upward from zero traces the whole branch with no root finding
-and no cancellation near threshold, which is what makes the exponent measurable
-to six digits rather than fitted.
+and no cancellation near threshold, so the branch is computed rather than
+fitted and the exponent is read off it directly.
 
 ## What the code establishes
 
@@ -67,7 +67,9 @@ unchanged. For `P(k) ~ k**-gamma` the tail of the average is
 * and, for precessing oscillators, `beta = 1/(gamma-3)` for `3 < gamma < 4` and
   `beta = 1` above.
 
-Both published families are reproduced numerically to parts in `1e4`, and their
+Both published families are reproduced numerically to between `2e-5` and `5e-4`
+for five of the six published values, and to `9e-3` for the sixth, which sits in
+the corner where the area under the averaged kernel is slowest to converge; their
 separate regime boundaries turn out to be the same condition: the point at which
 the second moment of the averaged kernel stops converging.
 
@@ -173,6 +175,7 @@ python scripts/10_marginal_and_robustness.py
 python scripts/11_figures.py
 python scripts/12_tables.py
 python scripts/13_graphical_abstract.py
+python scripts/14_letter_figures.py
 ```
 
 Each writes a JSON record to `data/`. Every table in the paper is generated from
