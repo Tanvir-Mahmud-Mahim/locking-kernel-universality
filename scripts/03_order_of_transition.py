@@ -12,8 +12,9 @@ local minimum the smoothing RAISES it, c < 0, the branch folds back, three
 solutions coexist over an interval of coupling, and the onset is first order
 with hysteresis and a jump in R.
 
-The criterion is tested on a line made of two equal Gaussians of separation a
-and component width s.  Nothing about the order is assumed: it is read off the
+The criterion is tested on a line made of two equal Gaussians of component
+width s whose peaks sit at +/- a, so that a/s is the offset of each peak from
+the origin in units of the width.  Nothing about the order is assumed: it is read off the
 shape of the exactly computed branch, and compared with the sign of c.
 """
 import json
@@ -34,6 +35,13 @@ WIDTH = mp.mpf(1) / 4
 
 
 def line_at(ratio):
+    """Two equal Gaussians of standard deviation WIDTH centred at +/- a.
+
+    `ratio` is a / WIDTH, the offset of each peak from the origin in units of
+    the component width, which is the variable reported as a_over_s.  Note
+    that lineshapes.bimodal_gaussian takes the peak to peak separation, which
+    is twice the offset.
+    """
     return L.bimodal_gaussian(float(ratio * WIDTH * 2), float(WIDTH))
 
 
@@ -74,14 +82,29 @@ def main():
         line = line_at(ratio)
         mono = monotonic(line, cons)
         note = ""
+        entry = dict(a_over_s=r, monotonic=bool(mono))
         if not mono:
-            fold = P.fold_interval(line, cons)
-            note = (f"chiN in [{mp.nstr(fold['chiN_lo'], 5)}, "
-                    f"{mp.nstr(fold['chiN_hi'], 5)}], "
-                    f"R jumps {mp.nstr(fold['R_lower'], 4)} -> "
-                    f"{mp.nstr(fold['R_upper'], 4)}")
+            # The grid reaches down to Omega = 1e-8 so that the upper end of
+            # the loop is resolved as the Omega -> 0 limit of the branch,
+            # which for a subcritical onset is the threshold itself.
+            fold = P.fold_interval(line, cons, lo=-8.0)
+            chiN_c = P.threshold(line, cons)
+            note = (f"hysteretic over chiN in [{mp.nstr(fold['chiN_lo'], 6)}, "
+                    f"{mp.nstr(fold['chiN_hi'], 6)}]; the upper end is the "
+                    f"threshold chiN_c = {mp.nstr(chiN_c, 6)}, where the "
+                    f"low branch ceases to exist and R jumps "
+                    f"{mp.nstr(fold['R_low'], 4)} -> "
+                    f"{mp.nstr(fold['R_jump'], 4)}; on the way down the high "
+                    f"branch ends at R = {mp.nstr(fold['R_high_at_lo'], 4)}")
+            entry["chiN_lo"] = mp.nstr(fold["chiN_lo"], 10)
+            entry["chiN_hi"] = mp.nstr(fold["chiN_hi"], 10)
+            entry["chiN_c"] = mp.nstr(chiN_c, 10)
+            entry["R_jump"] = mp.nstr(fold["R_jump"], 6)
+            entry["R_high_at_lo"] = mp.nstr(fold["R_high_at_lo"], 6)
+            entry["hysteresis_factor"] = mp.nstr(chiN_c / fold["chiN_lo"], 6)
         print(f"    {r:>6} {str(mono):>10}   {note}")
-        out["order"].append(dict(a_over_s=r, monotonic=bool(mono), note=note))
+        entry["note"] = note
+        out["order"].append(entry)
 
     print("=" * 74)
     print("Sharpness of the criterion across the tricritical point")
