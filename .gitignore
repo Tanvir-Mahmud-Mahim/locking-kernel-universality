@@ -1,0 +1,10 @@
+# The manuscript and its build products are not part of the code release.
+paper/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+data/*.log
+.DS_Store
