@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "lockkernel: locking kernel universality in synchronization transitions"
+abstract: >-
+  Reference implementation of the exact parametric solution of the locking
+  self consistency, the line of universality classes set by the locking kernel
+  tail, the criterion for the order of the transition, and the entanglement
+  threshold of the conservative quantum model.
+type: software
+version: "1.0.0"
+license: MIT
+authors:
+  - family-names: Mahim
+    given-names: Tanvir M.
+    affiliation: "Department of Electrical and Electronic Engineering, BRAC University, Dhaka, Bangladesh"
+  - family-names: Rahman
+    given-names: M. Mosaddequr
+    affiliation: "Department of Electrical and Electronic Engineering, BRAC University, Dhaka, Bangladesh"
+  - family-names: Mohsin
+    given-names: Abu S. M.
+    affiliation: "Department of Electrical and Electronic Engineering, BRAC University, Dhaka, Bangladesh"
+keywords:
+  - synchronization
+  - universality class
+  - critical exponent
+  - Kuramoto model
+  - spin squeezing
+  - quantum metrology
