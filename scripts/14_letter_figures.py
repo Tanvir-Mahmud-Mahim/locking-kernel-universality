@@ -56,6 +56,27 @@ plt.rcParams.update({"font.size": 9, "axes.linewidth": 0.8,
 
 BLUE, RED, GREY, GREEN = "#1f6feb", "#c1121f", "#666666", "#2a7f4f"
 
+# The layout of figL4, kept here rather than inside the drawing code so that
+# tests/test_figure_geometry.py checks the same numbers the figure is drawn
+# from.  The two panel rectangles overlap: each is wider and taller than the
+# drawing it holds, which is what lets a long flat cavity and a cone be drawn
+# large on one narrow column.  Overlapping rectangles are only safe while
+# neither panel carries a background, because an axes background is opaque
+# white and the panel added second would paint over the first.  That is not a
+# stylistic point: it took the near lower corner off the cavity in v1.0.6.
+FIG4_SIZE = (3.35, 3.02)
+FIG4_AXA = [-0.085, 0.452, 1.175, 0.598]
+FIG4_AXB = [-0.030, -0.150, 1.060, 0.740]
+
+
+def fig4_panels(fig):
+    """Add the two panels of figL4 to `fig`, with no background on either."""
+    axa = fig.add_axes(FIG4_AXA, projection="3d")
+    axb = fig.add_axes(FIG4_AXB, projection="3d")
+    for ax in (axa, axb):
+        ax.patch.set_visible(False)
+    return axa, axb
+
 
 def _fig_xy(fig, ax, xyz):
     """Where a point of a 3-D axes lands, in figure coordinates."""
@@ -220,6 +241,139 @@ def _report_clipping(fig, stem, dpi=300):
                            ink.shape[0] - 1 - ys.max(),
                            ink.shape[1] - 1 - xs.max())))
     return hit
+
+
+def _report_box_edges(fig, ax, stem, hx, hy, hz, dpi=300, tol=0.995):
+    """Say whether every edge of the drawn cavity survives to the page.
+
+    A three dimensional panel is a rectangle on the canvas, and the rectangle
+    of one panel can reach over the drawing of another.  When it does, the
+    axes background of the panel on top paints white over whatever was under
+    it, and the result is a box with a corner quietly missing.  Nothing in
+    matplotlib reports that, and the label check does not either, because it
+    looks for text printed on drawing and not for drawing wiped out.
+
+    So the twelve edges are checked directly: each is projected to canvas
+    pixels with the same transform that drew it, and the render is sampled
+    along it for the near neutral dark grey the edges are drawn in.  An edge
+    that is painted over its whole length is present; anything less is named,
+    with the stretch that is missing.
+    """
+    import io
+
+    import numpy as _np
+    from matplotlib import image as _mimg
+    from mpl_toolkits.mplot3d import proj3d
+
+    # The data transform reports pixels at the figure's current dpi, and the
+    # render below is made at `dpi`.  If the two differ every sample lands in
+    # the wrong place and the check reports nothing drawn at all, so the dpi
+    # is set here rather than assumed.
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi)
+    buf.seek(0)
+    img = _mimg.imread(buf)[..., :3]
+    H, W, _ = img.shape
+
+    def to_px(p):
+        x, y, _ = proj3d.proj_transform(p[0], p[1], p[2], ax.get_proj())
+        col, row = ax.transData.transform((x, y))
+        return col, H - row
+
+    corners = {(sx, sy, sz): (sx * hx, sy * hy, sz * hz)
+               for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)}
+    edges = [(a, b) for a in corners for b in corners
+             if a < b and sum(u != v for u, v in zip(a, b)) == 1]
+
+    def painted(row, col, rad=2):
+        r0, r1 = max(0, row - rad), min(H, row + rad + 1)
+        c0, c1 = max(0, col - rad), min(W, col + rad + 1)
+        if r1 <= r0 or c1 <= c0:
+            return False
+        patch = img[r0:r1, c0:c1].reshape(-1, 3)
+        dark = patch.sum(axis=1) < 2.2            # darker than a light grey
+        flat = (patch.max(axis=1) - patch.min(axis=1)) < 0.10   # near neutral
+        return bool((dark & flat).any())
+
+    worst, bad = 1.0, []
+    for a, b in edges:
+        pa, pb = to_px(corners[a]), to_px(corners[b])
+        ts = _np.linspace(0.0, 1.0, 201)
+        hit = [painted(int(round(pa[1] + t * (pb[1] - pa[1]))),
+                       int(round(pa[0] + t * (pb[0] - pa[0])))) for t in ts]
+        frac = sum(hit) / len(hit)
+        worst = min(worst, frac)
+        if frac < tol:
+            miss = [round(float(t), 2) for t, h in zip(ts, hit) if not h]
+            bad.append((a, b, frac, miss[0], miss[-1]))
+
+    if bad:
+        for a, b, frac, t0, t1 in bad:
+            print("  %s: EDGE %s to %s only %.0f%% drawn, missing between "
+                  "%.2f and %.2f of its length" % (stem, a, b, 100 * frac,
+                                                   t0, t1))
+    else:
+        print("  %s: all %d edges of the cavity drawn in full, %.1f%% at the "
+              "thinnest" % (stem, len(edges), 100 * worst))
+    return bad
+
+
+def _report_title_clearance(fig, stem, titles, dpi=300):
+    """Measure the white space under each panel title, in pixels.
+
+    A title that clears the drawing by one pixel passes an overlap check and
+    still reads as crowded.  This measures the real gap: the title's own glyph
+    pixels are recovered by differencing, and the drawing below is searched,
+    column by column under those glyphs, for its first ink.
+    """
+    import io
+
+    import numpy as _np
+    from matplotlib import image as _mimg
+
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+
+    def shot():
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi)
+        buf.seek(0)
+        return _mimg.imread(buf)[..., :3]
+
+    keep = [(t, t.get_visible()) for t in titles]
+    for t, _ in keep:
+        t.set_visible(False)
+    bare = shot()
+    for t, v in keep:
+        t.set_visible(v)
+    rest = bare.min(axis=2) < 0.97
+    H, W = rest.shape
+
+    gaps = []
+    for t, _ in keep:
+        t.set_visible(False)
+        without = shot()
+        t.set_visible(True)
+        img = shot()
+        glyph = _np.abs(img - without).max(axis=2) > 0.02
+        if not glyph.any():
+            continue
+        rows, cols = _np.nonzero(glyph)
+        bottom = rows.max()
+        under = rest[bottom + 1:, cols.min():cols.max() + 1]
+        if under.any():
+            gap = int(_np.nonzero(under.any(axis=1))[0][0])
+        else:
+            gap = H - bottom - 1
+        gaps.append((t.get_text(), gap))
+
+    for label, gap in gaps:
+        print("  %s: %r clears the drawing below it by %d px"
+              % (stem, label, gap))
+    return gaps
 
 
 def report_label_clashes(fig, stem, dpi=300, grow=1, tol_px=0):
@@ -619,11 +773,11 @@ def letter_fig4():
     _, R, _ = P.branch_point(line, cons, Om)
     R = float(R)
 
-    fig = plt.figure(figsize=(3.35, 2.84))
+    fig = plt.figure(figsize=FIG4_SIZE)
+    axa, axb = fig4_panels(fig)
 
     # ------------------------------------------------------------ panel (a)
-    axa = fig.add_axes([-0.085, 0.455, 1.175, 0.650], projection="3d")
-    _cavity_box(axa)
+    hx, hy, hz = _cavity_box(axa)
 
     nspin = 15
     qs = (np.arange(nspin) + 0.5) / nspin
@@ -661,7 +815,6 @@ def letter_fig4():
     axa.set_axis_off()
 
     # ------------------------------------------------------------ panel (b)
-    axb = fig.add_axes([-0.030, -0.175, 1.060, 0.790], projection="3d")
     u0 = 1.0
     n, alpha, spin, _ = _precession_frame(u0)
     cosa = float(np.cos(alpha))
@@ -721,16 +874,16 @@ def letter_fig4():
     axb.set_axis_off()
 
     # ------------------------------------------------------------ labels
-    fig.text(0.012, 0.958, "(a)", fontsize=8.5)
-    fig.text(0.082, 0.958, "one mode, one collective field",
-             fontsize=7.2, color="#333333")
-    fig.text(0.012, 0.478, "(b)", fontsize=8.5)
-    fig.text(0.082, 0.478, "why the kernel is algebraic",
-             fontsize=7.2, color="#333333")
+    ta = fig.text(0.012, 0.962, "(a)", fontsize=8.5)
+    ta2 = fig.text(0.082, 0.962, "one mode, one collective field",
+                   fontsize=7.2, color="#333333")
+    tb = fig.text(0.012, 0.452, "(b)", fontsize=8.5)
+    tb2 = fig.text(0.082, 0.452, "why the kernel is algebraic",
+                   fontsize=7.2, color="#333333")
 
-    fig.text(0.012, 0.527, r"cavity mode $\omega_c$", fontsize=7.0,
+    fig.text(0.012, 0.512, r"cavity mode $\omega_c$", fontsize=7.0,
              color=BLUE, ha="left")
-    fig.text(0.988, 0.527, r"spins shaded by $|\delta|$", fontsize=7.0,
+    fig.text(0.988, 0.512, r"spins shaded by $|\delta|$", fontsize=7.0,
              color=RED, ha="right")
     fig.text(0.012, 0.010, "drive axis", fontsize=7.0, color=GREEN,
              ha="left")
@@ -761,6 +914,8 @@ def letter_fig4():
                 color="#1a7f37", fontsize=8.4, ha="center", va="center")
     resolve_label_clashes(fig)
     report_label_clashes(fig, "figL4_realization")
+    _report_box_edges(fig, axa, "figL4_realization", hx, hy, hz)
+    _report_title_clearance(fig, "figL4_realization", [ta2, tb2])
     _report_clipping(fig, "figL4_realization")
     out = os.path.join(F, "figL4_realization")
     fig.savefig(out + ".pdf")
