@@ -4,10 +4,10 @@ title: "lockkernel: locking kernel universality in synchronization transitions"
 abstract: >-
   Reference implementation of the exact parametric solution of the locking
   self consistency, the line of universality classes set by the locking kernel
-  tail, the criterion for the order of the transition, and the entanglement
-  threshold of the conservative quantum model.
+  tail, the criterion for the order of the transition, and the class resolved
+  dynamics used to test the time averaged kernel against the full motion.
 type: software
-version: "1.0.0"
+version: "1.0.3"
 license: MIT
 authors:
   - family-names: Mahim
@@ -24,5 +24,10 @@ keywords:
   - universality class
   - critical exponent
   - Kuramoto model
-  - spin squeezing
-  - quantum metrology
+  - collective dynamics
+  - scale free networks
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22696369
+    description: "Concept DOI, always resolving to the latest version"
+repository-code: "https://github.com/Tanvir-Mahmud-Mahim/locking-kernel-universality"
