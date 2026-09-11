@@ -77,7 +77,7 @@ the second moment of the averaged kernel stops converging.
 
 ```bash
 pip install -e .
-pytest            # 56 tests, about a minute
+pytest                       # 120 tests, about a minute
 ```
 
 Requires Python 3.9 or later, with `numpy`, `scipy`, `mpmath` and `matplotlib`.
