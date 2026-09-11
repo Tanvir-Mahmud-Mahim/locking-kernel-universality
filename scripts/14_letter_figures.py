@@ -12,11 +12,17 @@ Two files are produced.
          It reads data/03_order_of_transition.json.
 
   figL4  the one physical setting the Letter names, a spin ensemble coupled to
-         a detuned cavity mode, in a single column.  The drawing is the one
-         already used as panel (a) of the graphical abstract: this script
-         imports draw_cavity from scripts/13_graphical_abstract.py rather than
-         redrawing it, so the two cannot drift apart.  It carries no numbers
-         and is not a device drawing, because the paper contains no device.
+         a detuned cavity mode, in a single column and in two panels.  It is
+         not a sketch.  Panel (a) draws every spin at the tilt the model gives
+         for its own detuning, arctan(u), for detunings at evenly spaced
+         quantiles of the Gaussian line, and the collective spin at the length
+         the self consistency returns.  Panel (b) is the construction that
+         produces the kernel: the effective field (Om, 0, delta), the cone the
+         oscillator precesses on, the time average along that field, and its
+         projection cos^2(alpha) on the drive axis.  Every angle and length in
+         panel (b) is checked against the kernel the package computes, in
+         tests/test_figure_geometry.py.  It is still not a device drawing,
+         because the paper contains no device.
 
 The two remaining Letter figures are the ones the long version already uses,
 fig2_disorder and fig3_convergence, written by scripts/11_figures.py.
@@ -259,51 +265,250 @@ def letter_fig3():
     save(fig, "figL3_order")
 
 
-def letter_fig4():
-    """The cavity realization, single column.
+def _precession_frame(u):
+    """The exact single oscillator geometry, taken straight from the paper.
 
-    The geometry is imported from the graphical abstract script so that the
-    two drawings are the same object seen at two sizes.  Only the size and
-    the placement of the four labels change: at single column width the
-    labels of the three panel version would collide with the box, so each is
-    positioned against the empty region it sits in and checked against the
-    rendered figure rather than assumed.
+    The supplement states it in one sentence: a unit vector precesses about
+    the effective field (Om, 0, delta); the projection of the field direction
+    on the drive axis is Om/sqrt(Om^2 + delta^2), and the time averaged
+    projection of the oscillator on the drive axis is the square of that.
+
+    Work in units of Om, so that delta/Om = u.  Put the drive axis, which is
+    the direction of the collective field, along x, and the detuning axis
+    along z.  The effective field is then (1, 0, u), its tilt from the drive
+    axis is alpha = arctan(u), and an oscillator prepared along the drive axis
+    lies on a cone of half angle alpha about it.  Returns the unit field
+    direction, alpha, the oscillator at precession phase phi, and the
+    component along the field, which is the time average.
+
+    Every relation used here is checked against the kernel the package
+    computes, in tests/test_figure_geometry.py.
     """
-    import importlib.util
+    B = np.array([1.0, 0.0, u])
+    n = B / np.linalg.norm(B)
+    alpha = np.arctan2(u, 1.0)
+    x = np.array([1.0, 0.0, 0.0])
+    par = np.dot(x, n) * n            # the component along the field
+    perp = x - par                    # the radius of the cone
+    w = np.cross(n, perp)             # completes the right handed pair
+
+    def spin(phi):
+        return par + perp * np.cos(phi) + w * np.sin(phi)
+
+    return n, alpha, spin, par
+
+
+def _cavity_box(ax, LX=4.4, LY=2.0, LZ=2.0):
+    """The cavity: a closed volume carrying one standing wave mode.
+
+    The mode drawn is the fundamental, one half wavelength between the end
+    walls, so the envelope is cos(pi x / LX) and vanishes on both walls.  The
+    exchange in the model is uniform and all to all, so nothing is meant by
+    where an individual spin sits inside the box.
+    """
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
+    hx, hy, hz = LX / 2, LY / 2, LZ / 2
+
+    yy, zz = np.meshgrid([-hy, hy], [-hz, hz])
+    for sx in (-hx, hx):
+        ax.plot_surface(np.full_like(yy, sx), yy, zz, color=GREY, alpha=0.20,
+                        shade=False, edgecolor="none", zorder=0)
+    xx, yy2 = np.meshgrid([-hx, hx], [-hy, hy])
+    ax.plot_surface(xx, yy2, np.full_like(xx, -hz), color=GREY, alpha=0.10,
+                    shade=False, edgecolor="none", zorder=0)
+
+    c = np.array([[sx * hx, sy * hy, sz * hz]
+                  for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)])
+    edges = [[c[i], c[j]] for i in range(8) for j in range(i + 1, 8)
+             if np.count_nonzero(c[i] != c[j]) == 1]
+    ax.add_collection3d(Line3DCollection(edges, colors="#4d4d4d",
+                                         linewidths=0.9))
+
+    xs = np.linspace(-hx, hx, 240)
+    env = 0.86 * np.cos(np.pi * xs / LX)
+    poly = np.concatenate([np.stack([xs, env], 1),
+                           np.stack([xs[::-1], -env[::-1]], 1)])
+    ax.add_collection3d(Poly3DCollection(
+        [[(q[0], -hy + 0.02, q[1]) for q in poly]],
+        facecolor=BLUE, alpha=0.15, edgecolor=BLUE, linewidths=0.7))
+    for x0 in np.linspace(-hx + 0.55, hx - 0.55, 7):
+        a = 0.86 * np.cos(np.pi * x0 / LX)
+        ax.quiver(x0, -hy + 0.02, -a, 0, 0, 2 * a, color=BLUE, lw=0.7,
+                  alpha=0.5, arrow_length_ratio=0.10, zorder=0)
+    return hx, hy, hz
+
+
+def letter_fig4():
+    """The cavity realization, and the geometry that makes the kernel algebraic.
+
+    Panel (a) is the ensemble in the cavity.  Each spin is drawn at the tilt
+    the model gives for its own detuning, alpha = arctan(u), and not at a
+    random one; the detunings are the evenly spaced quantiles of the Gaussian
+    line, so the spread drawn is the spread the calculation uses.  The
+    collective spin carries the length the self consistency returns for that
+    line at that locking bandwidth.
+
+    Panel (b) is one oscillator, and is the reason the kernel is algebraic.
+    It shows the effective field (Om, 0, delta), the cone the oscillator
+    precesses on, the time average along that field, and the projection of
+    that average on the drive axis, which is cos^2 alpha and therefore the
+    kernel.  The panel is drawn at u = 1, where the tilt is exactly 45 degrees
+    and the projection exactly one half.
+
+    There is no locked and drifting distinction in this panel.  That dichotomy
+    belongs to the overdamped kernel, which is identically zero beyond u = 1.
+    For this case the paper says the opposite, that no detuning releases such
+    an oscillator completely, so the spins are shaded continuously by detuning
+    instead of being split into two classes.
+    """
+    import mpmath as mp
+    from matplotlib import colors as mcolors
+    from scipy.special import erfinv
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    from lockkernel import kernels as K, lineshapes as L, parametric as P
+    mp.mp.dps = 20
 
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "13_graphical_abstract.py")
-    spec = importlib.util.spec_from_file_location("ga13", path)
-    ga = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(ga)
+    cons = K.conservative()
+    line = L.gaussian(1.0)
+    Om = mp.mpf(1)
+    _, R, _ = P.branch_point(line, cons, Om)
+    R = float(R)
 
-    # A 3-D axes reserves a square region whatever the box aspect, so most of
-    # it is empty here.  The figure is therefore sized and the axes placed by
-    # hand and saved without a tight bounding box, which would otherwise keep
-    # the empty region and cost length in the journal's figure count for
-    # nothing.  The four labels are placed in figure coordinates against the
-    # white areas the drawing leaves.
-    fig = plt.figure(figsize=(3.35, 1.90))
-    ax = fig.add_axes([-0.085, -0.20, 1.17, 1.48], projection="3d")
-    ga.draw_cavity(ax)
+    fig = plt.figure(figsize=(3.35, 3.02))
 
-    # The labels sit in bands above and below the drawing, not on it, so that
-    # none of them can touch an edge of the box or an arrow.
-    fig.text(0.50, 0.985, r"spins detuned by $\delta$", fontsize=7.5,
-             color=RED, ha="center", va="top")
-    fig.text(0.015, 0.035, r"cavity mode $\omega_c$", fontsize=7.5,
-             color=BLUE, ha="left", va="bottom")
-    fig.text(0.66, 0.035, "locked", fontsize=7.5, color=RED,
-             ha="left", va="bottom")
-    fig.text(0.845, 0.035, "drifting", fontsize=7.5, color="#8a8a8a",
-             ha="left", va="bottom")
+    # ------------------------------------------------------------ panel (a)
+    axa = fig.add_axes([-0.085, 0.435, 1.175, 0.640], projection="3d")
+    _cavity_box(axa)
+
+    nspin = 15
+    qs = (np.arange(nspin) + 0.5) / nspin
+    deltas = np.sqrt(2.0) * erfinv(2 * qs - 1)        # Gaussian line, sigma = 1
+    us = deltas / float(Om)
+
+    # Shaded by |detuning| on a single red scale.  A diverging scale would put
+    # blue on the spins, which is the colour of the mode, so the two would be
+    # read as the same thing.
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        "tilt", ["#f4a0a0", "#d94a4a", RED, "#8d1616", "#5d0f0f"])
+    umax = float(np.max(np.abs(us)))
+
+    xg = np.linspace(-1.58, 1.22, 5)
+    yg = np.array([0.22, 0.92])
+    zg = np.array([-0.54, 0.40])
+    sites = [(x, y, z) for z in zg for y in yg for x in xg][:nspin]
+    Ls = 0.58
+    for k in np.argsort(np.abs(us))[::-1]:
+        x0, y0, z0 = sites[k]
+        _, _, spin, _ = _precession_frame(us[k])
+        v = spin(0.62 * np.pi * (k % 3) + 0.30)
+        col = cmap(abs(us[k]) / umax)
+        axa.quiver(x0, y0, z0, Ls * v[0], Ls * v[1], Ls * v[2],
+                   color=col, lw=1.2, arrow_length_ratio=0.34, zorder=4)
+
+    Sx0, Sy0, Sz0 = -1.70, 0.54, 0.90
+    axa.quiver(Sx0, Sy0, Sz0, 4.10 * R, 0.0, 0.0, color=GREEN, lw=2.4,
+               arrow_length_ratio=0.15, zorder=6)
+    axa.text(Sx0 + 4.10 * R + 0.10, Sy0, Sz0 - 0.34, r"$\mathbf{S}$",
+             color=GREEN, fontsize=9.5, zorder=7)
+    axa.set_xlim(-2.3, 2.3)
+    axa.set_ylim(-1.15, 1.15)
+    axa.set_zlim(-1.15, 1.15)
+    axa.set_box_aspect((4.6, 2.3, 2.3))
+    axa.view_init(elev=17, azim=-62)
+    axa.set_axis_off()
+
+    # ------------------------------------------------------------ panel (b)
+    axb = fig.add_axes([-0.010, -0.140, 1.030, 0.700], projection="3d")
+    u0 = 1.0
+    n, alpha, spin, _ = _precession_frame(u0)
+    cosa = float(np.cos(alpha))
+    sina = float(np.sin(alpha))
+    Wc = float(cons.W(mp.mpf(u0)))
+
+    GOLD, DARK = "#b8860b", "#3a3a3a"
+
+    # the effective field drawn unnormalised, so that its two legs are Om
+    # along the drive axis and delta along the detuning axis
+    axb.quiver(0, 0, 0, 1.30, 0, 0, color=GREEN, lw=1.8,
+               arrow_length_ratio=0.12, zorder=3)
+    axb.quiver(0, 0, 0, 1.0, 0, u0, color=GOLD, lw=1.9,
+               arrow_length_ratio=0.14, zorder=5)
+    axb.plot([0, 1.0], [0, 0], [u0, u0], color=GOLD, lw=0.7,
+             ls=(0, (2.2, 1.8)), alpha=0.75, zorder=4)
+    axb.plot([1.0, 1.0], [0, 0], [0, u0], color=GOLD, lw=0.7,
+             ls=(0, (2.2, 1.8)), alpha=0.75, zorder=4)
+    axb.text(0.72, 0.0, 1.055, r"$\Omega$", color=GOLD, fontsize=8.5,
+             ha="center", zorder=7)
+    axb.text(1.10, 0.0, 0.46, r"$\delta$", color=GOLD, fontsize=8.5,
+             zorder=7)
+    axb.text(1.06, 0.0, 1.12, r"$(\Omega,0,\delta)$", color=GOLD,
+             fontsize=8.0, ha="left", zorder=7)
+
+    phi = np.linspace(0, 2 * np.pi, 400)
+    cone = np.array([spin(p) for p in phi])
+    axb.plot(cone[:, 0], cone[:, 1], cone[:, 2], color=RED, lw=1.0,
+             alpha=0.85, zorder=4)
+    for p in np.linspace(0, 2 * np.pi, 13)[:-1]:
+        v = spin(p)
+        axb.plot([0, v[0]], [0, v[1]], [0, v[2]], color=RED, lw=0.4,
+                 alpha=0.26, zorder=3)
+    v0 = spin(0.86 * np.pi)
+    axb.quiver(0, 0, 0, v0[0], v0[1], v0[2], color=RED, lw=1.7,
+               arrow_length_ratio=0.16, zorder=6)
+    axb.text(v0[0] - 0.19, v0[1], v0[2] - 0.03, r"$\mathbf{s}$", color=RED,
+             fontsize=9, ha="center", zorder=7)
+
+    avg = cosa * n
+    axb.quiver(0, 0, 0, avg[0], avg[1], avg[2], color="#1a7f37", lw=1.8,
+               arrow_length_ratio=0.20, zorder=6)
+    axb.text(avg[0] - 0.24, avg[1], avg[2] + 0.02,
+             r"$\langle\mathbf{s}\rangle$", color="#1a7f37", fontsize=8.6,
+             ha="center", zorder=7)
+    axb.plot([avg[0], avg[0]], [0, 0], [0, avg[2]], color=DARK,
+             lw=0.9, ls=(0, (2.4, 2.0)), zorder=5)
+    axb.plot([avg[0]], [0], [0], marker="o", ms=3.4, color=DARK, zorder=7)
+
+    arc = np.linspace(0, alpha, 60)
+    r = 0.22
+    axb.plot(r * np.cos(arc), np.zeros_like(arc), r * np.sin(arc),
+             color=GOLD, lw=1.0, zorder=5)
+    axb.text(0.30 * np.cos(alpha / 2), 0.0, 0.30 * np.sin(alpha / 2) - 0.04,
+             r"$\alpha$", color=GOLD, fontsize=9, zorder=7)
+
+    axb.set_xlim(-0.16, 1.50)
+    axb.set_ylim(-0.80, 0.80)
+    axb.set_zlim(-0.40, 1.22)
+    axb.set_box_aspect((1.52, 1.60, 1.62))
+    axb.view_init(elev=15, azim=-68)
+    axb.set_axis_off()
+
+    # ------------------------------------------------------------ labels
+    fig.text(0.012, 0.972, "(a)", fontsize=8.5)
+    fig.text(0.082, 0.972, "one mode, one collective field",
+             fontsize=7.2, color="#333333")
+    fig.text(0.012, 0.452, "(b)", fontsize=8.5)
+    fig.text(0.082, 0.452, "why the kernel is algebraic",
+             fontsize=7.2, color="#333333")
+
+    fig.text(0.012, 0.500, r"cavity mode $\omega_c$", fontsize=7.0,
+             color=BLUE, ha="left")
+    fig.text(0.988, 0.500, r"spins shaded by $|\delta|$", fontsize=7.0,
+             color=RED, ha="right")
+    fig.text(0.012, 0.012, "drive axis", fontsize=7.0, color=GREEN,
+             ha="left")
+    fig.text(0.988, 0.012, r"$\cos^{2}\alpha=W_{\rm c}(u)$", fontsize=7.2,
+             color=DARK, ha="right")
 
     out = os.path.join(F, "figL4_realization")
     fig.savefig(out + ".pdf")
     fig.savefig(out + ".png", dpi=300)
     plt.close(fig)
     print("saved", out + ".pdf and .png")
+    print("  panel (b) at u = %.1f: alpha = %.6f deg, cos^2 alpha = %.12f, "
+          "W_c from package = %.12f, deviation %.2e"
+          % (u0, np.degrees(alpha), cosa ** 2, Wc, abs(cosa ** 2 - Wc)))
+    print("  panel (a): R from the self consistency = %.8f" % R)
+    print("  panel (a): detunings span u = %.4f to %.4f" % (us.min(), us.max()))
 
 
 if __name__ == "__main__":
