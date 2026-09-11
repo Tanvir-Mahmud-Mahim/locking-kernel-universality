@@ -11,6 +11,13 @@ Two files are produced.
   figL3  the order of the transition, for the End Matter, in a single column.
          It reads data/03_order_of_transition.json.
 
+  figL4  the one physical setting the Letter names, a spin ensemble coupled to
+         a detuned cavity mode, in a single column.  The drawing is the one
+         already used as panel (a) of the graphical abstract: this script
+         imports draw_cavity from scripts/13_graphical_abstract.py rather than
+         redrawing it, so the two cannot drift apart.  It carries no numbers
+         and is not a device drawing, because the paper contains no device.
+
 The two remaining Letter figures are the ones the long version already uses,
 fig2_disorder and fig3_convergence, written by scripts/11_figures.py.
 """
@@ -252,11 +259,60 @@ def letter_fig3():
     save(fig, "figL3_order")
 
 
+def letter_fig4():
+    """The cavity realization, single column.
+
+    The geometry is imported from the graphical abstract script so that the
+    two drawings are the same object seen at two sizes.  Only the size and
+    the placement of the four labels change: at single column width the
+    labels of the three panel version would collide with the box, so each is
+    positioned against the empty region it sits in and checked against the
+    rendered figure rather than assumed.
+    """
+    import importlib.util
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "13_graphical_abstract.py")
+    spec = importlib.util.spec_from_file_location("ga13", path)
+    ga = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ga)
+
+    # A 3-D axes reserves a square region whatever the box aspect, so most of
+    # it is empty here.  The figure is therefore sized and the axes placed by
+    # hand and saved without a tight bounding box, which would otherwise keep
+    # the empty region and cost length in the journal's figure count for
+    # nothing.  The four labels are placed in figure coordinates against the
+    # white areas the drawing leaves.
+    fig = plt.figure(figsize=(3.35, 1.90))
+    ax = fig.add_axes([-0.085, -0.20, 1.17, 1.48], projection="3d")
+    ga.draw_cavity(ax)
+
+    # The labels sit in bands above and below the drawing, not on it, so that
+    # none of them can touch an edge of the box or an arrow.
+    fig.text(0.50, 0.985, r"spins detuned by $\delta$", fontsize=7.5,
+             color=RED, ha="center", va="top")
+    fig.text(0.015, 0.035, r"cavity mode $\omega_c$", fontsize=7.5,
+             color=BLUE, ha="left", va="bottom")
+    fig.text(0.66, 0.035, "locked", fontsize=7.5, color=RED,
+             ha="left", va="bottom")
+    fig.text(0.845, 0.035, "drifting", fontsize=7.5, color="#8a8a8a",
+             ha="left", va="bottom")
+
+    out = os.path.join(F, "figL4_realization")
+    fig.savefig(out + ".pdf")
+    fig.savefig(out + ".png", dpi=300)
+    plt.close(fig)
+    print("saved", out + ".pdf and .png")
+
+
 if __name__ == "__main__":
-    want = sys.argv[1:] or ["1", "2", "3"]
+    want = sys.argv[1:] or ["1", "2", "3", "4"]
     if "1" in want:
         letter_fig1()
     if "2" in want:
         letter_fig2()
     if "3" in want:
         letter_fig3()
+    if "4" in want:
+        letter_fig4()
