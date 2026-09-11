@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lockkernel"
-version = "1.0.3"
+version = "1.0.4"
 description = "Locking kernel universality: thresholds, exponents and entanglement in conservative synchronization"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 dependencies = ["numpy>=1.22", "scipy>=1.8", "mpmath>=1.2", "matplotlib>=3.5"]
 
 [project.optional-dependencies]

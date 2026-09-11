@@ -185,4 +185,4 @@ it. The archived records and figures are deposited separately; see
 
 ## License
 
-MIT. See `LICENSE`.
+Apache License 2.0. See `LICENSE`, and `NOTICE` for the copyright statement.
