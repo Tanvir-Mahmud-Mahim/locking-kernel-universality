@@ -27,13 +27,19 @@ US = [0.0, 0.1, 0.25, 0.5, 1.0, 2.0, 3.7, 10.0, 100.0]
 
 
 @pytest.fixture(scope="module")
-def frame():
-    """The helper the figure script actually uses."""
+def frame_mod():
+    """The figure script itself, so the tests read the drawing code."""
     path = os.path.join(ROOT, "scripts", "14_letter_figures.py")
     spec = importlib.util.spec_from_file_location("figL", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod._precession_frame
+    return mod
+
+
+@pytest.fixture(scope="module")
+def frame(frame_mod):
+    """The helper the figure script actually uses."""
+    return frame_mod._precession_frame
 
 
 @pytest.mark.parametrize("u", US)
@@ -120,3 +126,136 @@ def test_no_detuning_releases_a_precessing_oscillator():
         assert float(cons.W(mp.mpf(u))) > 0.0
     for u in (1.0000001, 1.5, 5.0):
         assert float(kur.W(mp.mpf(u))) == 0.0
+
+
+def _cavity_panel_render(frame_mod, opaque_backgrounds=False, dpi=200):
+    """Draw the cavity panel of figL4 in its real layout and render it.
+
+    The second panel is added as well, with the rectangle the figure gives it,
+    because the defect this guards against is not in either panel on its own.
+    It is in how the two overlap.
+    """
+    import io
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib import image as mimg
+
+    fig = plt.figure(figsize=frame_mod.FIG4_SIZE)
+    axa, axb = frame_mod.fig4_panels(fig)
+    if opaque_backgrounds:
+        for ax in (axa, axb):
+            ax.patch.set_visible(True)
+            ax.patch.set_facecolor("white")
+            ax.patch.set_alpha(1.0)
+    hx, hy, hz = frame_mod._cavity_box(axa)
+    axa.set_xlim(-2.3, 2.3)
+    axa.set_ylim(-1.15, 1.15)
+    axa.set_zlim(-1.15, 1.15)
+    axa.set_box_aspect((4.6, 2.3, 2.3))
+    axa.view_init(elev=17, azim=-62)
+    axa.set_axis_off()
+    axb.set_axis_off()
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi)
+    buf.seek(0)
+    img = mimg.imread(buf)[..., :3]
+    return fig, axa, (hx, hy, hz), img
+
+
+def _edge_coverage(fig, ax, half, img):
+    """Fraction of each of the twelve cavity edges that reached the page."""
+    from mpl_toolkits.mplot3d import proj3d
+    hx, hy, hz = half
+    H, W, _ = img.shape
+
+    def to_px(p):
+        x, y, _ = proj3d.proj_transform(p[0], p[1], p[2], ax.get_proj())
+        col, row = ax.transData.transform((x, y))
+        return col, H - row
+
+    corners = {(sx, sy, sz): (sx * hx, sy * hy, sz * hz)
+               for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)}
+    edges = [(a, b) for a in corners for b in corners
+             if a < b and sum(u != v for u, v in zip(a, b)) == 1]
+
+    def painted(row, col, rad=2):
+        r0, r1 = max(0, row - rad), min(H, row + rad + 1)
+        c0, c1 = max(0, col - rad), min(W, col + rad + 1)
+        if r1 <= r0 or c1 <= c0:
+            return False
+        patch = img[r0:r1, c0:c1].reshape(-1, 3)
+        dark = patch.sum(axis=1) < 2.2
+        flat = (patch.max(axis=1) - patch.min(axis=1)) < 0.10
+        return bool((dark & flat).any())
+
+    out = {}
+    for a, b in edges:
+        pa, pb = to_px(corners[a]), to_px(corners[b])
+        ts = np.linspace(0.0, 1.0, 161)
+        hit = [painted(int(round(pa[1] + t * (pb[1] - pa[1]))),
+                       int(round(pa[0] + t * (pb[0] - pa[0])))) for t in ts]
+        out[(a, b)] = sum(hit) / len(hit)
+    return out
+
+
+def test_every_edge_of_the_cavity_reaches_the_page(frame_mod):
+    """The cavity is drawn closed, and stays closed once rendered.
+
+    Figure 3(a) is a box, and a box with a corner missing is wrong on the
+    page whatever the code intended.  The twelve edges are projected with the
+    transform that drew them and the render is sampled along each one.
+    """
+    import matplotlib.pyplot as plt
+    fig, axa, half, img = _cavity_panel_render(frame_mod)
+    try:
+        cover = _edge_coverage(fig, axa, half, img)
+    finally:
+        plt.close(fig)
+    assert len(cover) == 12
+    missing = {e: f for e, f in cover.items() if f < 0.995}
+    assert not missing, "edges not fully drawn: %s" % missing
+
+
+def test_an_opaque_panel_background_would_remove_a_corner(frame_mod):
+    """The defect this guards against, shown to be real and not theoretical.
+
+    The two panel rectangles of the figure overlap. With backgrounds turned
+    on, the panel added second paints white over the bottom of the first and
+    the near lower corner of the cavity disappears. The check above is
+    therefore worth running, and the backgrounds must stay off.
+    """
+    import matplotlib.pyplot as plt
+    fig, axa, half, img = _cavity_panel_render(frame_mod,
+                                               opaque_backgrounds=True)
+    try:
+        cover = _edge_coverage(fig, axa, half, img)
+    finally:
+        plt.close(fig)
+    assert any(f < 0.995 for f in cover.values()), (
+        "an opaque background no longer hides anything, so this test and the "
+        "note in the figure script are both out of date")
+
+
+def test_the_panels_carry_no_background(frame_mod):
+    """The invariant behind the two tests above, stated directly."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=frame_mod.FIG4_SIZE)
+    try:
+        for ax in frame_mod.fig4_panels(fig):
+            assert not ax.patch.get_visible()
+    finally:
+        plt.close(fig)
+
+
+def test_the_panel_rectangles_really_do_overlap(frame_mod):
+    """If they ever stop overlapping, the tests above stop meaning anything."""
+    ax, bx = frame_mod.FIG4_AXA, frame_mod.FIG4_AXB
+    a = (ax[0], ax[1], ax[0] + ax[2], ax[1] + ax[3])
+    b = (bx[0], bx[1], bx[0] + bx[2], bx[1] + bx[3])
+    assert a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
