@@ -57,6 +57,251 @@ plt.rcParams.update({"font.size": 9, "axes.linewidth": 0.8,
 BLUE, RED, GREY, GREEN = "#1f6feb", "#c1121f", "#666666", "#2a7f4f"
 
 
+def _fig_xy(fig, ax, xyz):
+    """Where a point of a 3-D axes lands, in figure coordinates."""
+    from mpl_toolkits.mplot3d import proj3d
+    x2, y2, _ = proj3d.proj_transform(xyz[0], xyz[1], xyz[2], ax.get_proj())
+    disp = ax.transData.transform((x2, y2))
+    return fig.transFigure.inverted().transform(disp)
+
+
+def label_at(fig, ax, xyz, text, offset=(0.030, 0.0), **kw):
+    """Anchor a label to a point of a 3-D axes, in figure coordinates.
+
+    Nothing is decided about overlap here.  `resolve_label_clashes` measures
+    that afterwards, from the glyphs themselves, and moves whatever needs
+    moving; keeping a second, weaker opinion in this function only produced
+    two answers that disagreed.
+    """
+    x0, y0 = _fig_xy(fig, ax, xyz)
+    return fig.text(x0 + offset[0], y0 + offset[1], text, **kw)
+
+
+def resolve_label_clashes(fig, dpi=300, max_r=48, step=4, verbose=True):
+    """Slide every label off whatever it is sitting on, by measurement.
+
+    Bounding boxes are not trusted anywhere here.  A text artist on a 3-D axes
+    reports a stale window extent, so a box based check silently passes labels
+    that plainly overlap.  Instead each label's true glyph mask is captured
+    once, by rendering the figure with only that label shown and differencing
+    against the figure drawn with no labels at all.  A label keeps its exact
+    shape when it moves, so a candidate position is then tested by shifting
+    that mask in pixels and intersecting it with the ink of the drawing.  One
+    render per label buys a search over a whole neighbourhood.
+
+    The search spirals outward from where the label already is, so a label
+    that is already clear does not move and one that is not moves as little as
+    it can.  Anything still overlapping after `max_r` pixels is reported
+    rather than left to be found by a reader.
+    """
+    import io
+
+    import numpy as _np
+    from matplotlib import image as _mimg
+
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+
+    texts = [t for t in fig.texts if t.get_visible() and t.get_text().strip()]
+    for ax in fig.axes:
+        texts.extend(t for t in ax.texts
+                     if t.get_visible() and t.get_text().strip())
+    if not texts:
+        return []
+
+    def shot():
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi)
+        buf.seek(0)
+        return _mimg.imread(buf)[..., :3]
+
+    for t in texts:
+        t.set_visible(False)
+    bare = shot()
+    ink = bare.min(axis=2) < 0.97
+    H, W = ink.shape
+
+    def grow(mask, n):
+        out = mask.copy()
+        for _ in range(n):
+            g = out.copy()
+            g[1:, :] |= out[:-1, :]
+            g[:-1, :] |= out[1:, :]
+            g[:, 1:] |= out[:, :-1]
+            g[:, :-1] |= out[:, 1:]
+            out = g
+        return out
+
+    # The glyph mask is widened before searching.  Converting the chosen pixel
+    # shift back into a figure fraction rounds, so a position that only just
+    # cleared would come back touching; two pixels of margin absorb that.
+    masks = []
+    for t in texts:
+        t.set_visible(True)
+        img = shot()
+        t.set_visible(False)
+        masks.append(grow(_np.abs(img - bare).max(axis=2) > 0.02, 2))
+    for t in texts:
+        t.set_visible(True)
+
+    def hits(mask, dx, dy):
+        """Overlap of the mask, shifted by (dx, dy) pixels, with the ink."""
+        sx0, sx1 = max(0, dx), min(W, W + dx)
+        mx0, mx1 = max(0, -dx), min(W, W - dx)
+        sy0, sy1 = max(0, dy), min(H, H + dy)
+        my0, my1 = max(0, -dy), min(H, H - dy)
+        if sx1 <= sx0 or sy1 <= sy0:
+            return 10 ** 9
+        return int((mask[my0:my1, mx0:mx1] & ink[sy0:sy1, sx0:sx1]).sum())
+
+    order = [(0, 0)]
+    for r in range(step, max_r + 1, step):
+        for k in range(16):
+            a = 2 * _np.pi * k / 16
+            order.append((int(round(r * _np.cos(a))),
+                          int(round(-r * _np.sin(a)))))
+
+    moved, stuck = [], []
+    for t, mask in zip(texts, masks):
+        if not mask.any():
+            continue
+        best = None
+        for dx, dy in order:
+            n = hits(mask, dx, dy)
+            if n == 0:
+                best = (dx, dy, 0)
+                break
+            if best is None or n < best[2]:
+                best = (dx, dy, n)
+        dx, dy, n = best
+        if dx or dy:
+            x, y = t.get_position()
+            # image rows run downward while figure y runs upward, so the
+            # vertical shift changes sign on the way back
+            t.set_position((x + dx / (fig.get_figwidth() * dpi),
+                            y - dy / (fig.get_figheight() * dpi)))
+            moved.append((t.get_text(), dx, dy))
+        if n:
+            stuck.append((t.get_text(), n))
+
+    if verbose:
+        for label, dx, dy in moved:
+            print("    moved %-26s by (%+d, %+d) px to clear the drawing"
+                  % (repr(label), dx, dy))
+        for label, n in stuck:
+            print("    STILL OVERLAPPING %r, %d px" % (label, n))
+    fig.canvas.draw()
+    return stuck
+
+
+def _report_clipping(fig, stem, dpi=300):
+    """Say whether anything drawn runs off the edge of the canvas.
+
+    The figure is saved without a tight bounding box, so a label placed too
+    near an edge is quietly cut in half rather than making the file larger.
+    """
+    import io
+
+    import numpy as _np
+    from matplotlib import image as _mimg
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi)
+    buf.seek(0)
+    ink = _mimg.imread(buf)[..., :3].min(axis=2) < 0.97
+    sides = [("top", ink[0]), ("bottom", ink[-1]),
+             ("left", ink[:, 0]), ("right", ink[:, -1])]
+    hit = [nm for nm, row in sides if row.any()]
+    if hit:
+        print("  %s: CLIPPED at the %s edge" % (stem, " and ".join(hit)))
+    else:
+        ys, xs = _np.nonzero(ink)
+        print("  %s: nothing clipped, %d px of margin at the tightest edge"
+              % (stem, min(ys.min(), xs.min(),
+                           ink.shape[0] - 1 - ys.max(),
+                           ink.shape[1] - 1 - xs.max())))
+    return hit
+
+
+def report_label_clashes(fig, stem, dpi=300, grow=1, tol_px=0):
+    """Say whether any text in the figure is printed on top of drawn content.
+
+    Bounding boxes are not used.  A text artist on a 3-D axes reports a stale
+    window extent, so a box based check silently passes labels that plainly
+    overlap; this compares pixels instead, which cannot be fooled.
+
+    The figure is rendered once as it is, once with every text hidden, and
+    once per text with only that text hidden.  Differencing the last against
+    the first gives the exact pixels that text paints.  If any of those
+    pixels carry ink in the image with no text at all, the label is sitting on
+    something.  `grow` dilates the label mask by that many pixels so that a
+    glyph merely touching a line is also caught.
+    """
+    import io
+
+    import numpy as _np
+    from matplotlib import image as _mimg
+
+    fig.set_dpi(dpi)
+    fig.canvas.draw()
+
+    texts = [t for t in fig.texts if t.get_visible() and t.get_text().strip()]
+    for ax in fig.axes:
+        texts.extend(t for t in ax.texts
+                     if t.get_visible() and t.get_text().strip())
+
+    def shot():
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi)
+        buf.seek(0)
+        return _mimg.imread(buf)[..., :3]
+
+    full = shot()
+    for t in texts:
+        t.set_visible(False)
+    bare = shot()
+    for t in texts:
+        t.set_visible(True)
+
+    ink = bare.min(axis=2) < 0.97          # anything drawn that is not paper
+
+    def dilate(mask, n):
+        out = mask.copy()
+        for _ in range(n):
+            g = out.copy()
+            g[1:, :] |= out[:-1, :]
+            g[:-1, :] |= out[1:, :]
+            g[:, 1:] |= out[:, :-1]
+            g[:, :-1] |= out[:, 1:]
+            out = g
+        return out
+
+    bad = []
+    for t in texts:
+        t.set_visible(False)
+        without = shot()
+        t.set_visible(True)
+        mine = _np.abs(without - full).max(axis=2) > 0.02
+        if not mine.any():
+            continue
+        hit = dilate(mine, grow) & ink
+        n = int(hit.sum())
+        if n > tol_px:
+            ys, xs = _np.nonzero(hit)
+            bad.append((t.get_text(), n, int(mine.sum()),
+                        (int(xs.min()), int(ys.min()),
+                         int(xs.max()), int(ys.max()))))
+
+    if bad:
+        print("  LABEL CLASHES in %s:" % stem)
+        for label, n, area, box in sorted(bad, key=lambda r: -r[1]):
+            print("    %-26s %5d px on ink, of %5d px of glyph,  at %s"
+                  % (repr(label), n, area, box))
+    else:
+        print("  %s: %d labels checked, none printed on drawn content"
+              % (stem, len(texts)))
+    return bad
+
+
 def save(fig, stem):
     out = os.path.join(F, stem)
     fig.savefig(out + ".pdf", bbox_inches="tight", pad_inches=0.02)
@@ -374,10 +619,10 @@ def letter_fig4():
     _, R, _ = P.branch_point(line, cons, Om)
     R = float(R)
 
-    fig = plt.figure(figsize=(3.35, 3.02))
+    fig = plt.figure(figsize=(3.35, 2.84))
 
     # ------------------------------------------------------------ panel (a)
-    axa = fig.add_axes([-0.085, 0.435, 1.175, 0.640], projection="3d")
+    axa = fig.add_axes([-0.085, 0.455, 1.175, 0.650], projection="3d")
     _cavity_box(axa)
 
     nspin = 15
@@ -408,8 +653,6 @@ def letter_fig4():
     Sx0, Sy0, Sz0 = -1.70, 0.54, 0.90
     axa.quiver(Sx0, Sy0, Sz0, 4.10 * R, 0.0, 0.0, color=GREEN, lw=2.4,
                arrow_length_ratio=0.15, zorder=6)
-    axa.text(Sx0 + 4.10 * R + 0.10, Sy0, Sz0 - 0.34, r"$\mathbf{S}$",
-             color=GREEN, fontsize=9.5, zorder=7)
     axa.set_xlim(-2.3, 2.3)
     axa.set_ylim(-1.15, 1.15)
     axa.set_zlim(-1.15, 1.15)
@@ -418,87 +661,107 @@ def letter_fig4():
     axa.set_axis_off()
 
     # ------------------------------------------------------------ panel (b)
-    axb = fig.add_axes([-0.010, -0.140, 1.030, 0.700], projection="3d")
+    axb = fig.add_axes([-0.030, -0.175, 1.060, 0.790], projection="3d")
     u0 = 1.0
     n, alpha, spin, _ = _precession_frame(u0)
     cosa = float(np.cos(alpha))
-    sina = float(np.sin(alpha))
     Wc = float(cons.W(mp.mpf(u0)))
 
     GOLD, DARK = "#b8860b", "#3a3a3a"
 
-    # the effective field drawn unnormalised, so that its two legs are Om
-    # along the drive axis and delta along the detuning axis
-    axb.quiver(0, 0, 0, 1.30, 0, 0, color=GREEN, lw=1.8,
+    # A fan of the same field at other detunings was tried here and removed.
+    # It filled the wedge between the drive axis and the field, which is the
+    # one place the tilt can be labelled, and the tilt family is in any case
+    # already on view in panel (a), where each spin carries its own detuning.
+
+    # the drive axis, and the field at u = 1 drawn unnormalised so that its
+    # two legs are exactly Om along the drive axis and delta along the other
+    axb.quiver(0, 0, 0, 1.34, 0, 0, color=GREEN, lw=1.8,
                arrow_length_ratio=0.12, zorder=3)
-    axb.quiver(0, 0, 0, 1.0, 0, u0, color=GOLD, lw=1.9,
-               arrow_length_ratio=0.14, zorder=5)
+    axb.quiver(0, 0, 0, 1.0, 0, u0, color=GOLD, lw=1.5,
+               arrow_length_ratio=0.13, zorder=5)
     axb.plot([0, 1.0], [0, 0], [u0, u0], color=GOLD, lw=0.7,
              ls=(0, (2.2, 1.8)), alpha=0.75, zorder=4)
     axb.plot([1.0, 1.0], [0, 0], [0, u0], color=GOLD, lw=0.7,
              ls=(0, (2.2, 1.8)), alpha=0.75, zorder=4)
-    axb.text(0.72, 0.0, 1.055, r"$\Omega$", color=GOLD, fontsize=8.5,
-             ha="center", zorder=7)
-    axb.text(1.10, 0.0, 0.46, r"$\delta$", color=GOLD, fontsize=8.5,
-             zorder=7)
-    axb.text(1.06, 0.0, 1.12, r"$(\Omega,0,\delta)$", color=GOLD,
-             fontsize=8.0, ha="left", zorder=7)
 
+    # the cone the oscillator precesses on.  Only the locus and two extreme
+    # generators are drawn: a full fan of generators fills the wedge between
+    # the drive axis and the field, which is where the tilt has to be labelled.
     phi = np.linspace(0, 2 * np.pi, 400)
     cone = np.array([spin(p) for p in phi])
     axb.plot(cone[:, 0], cone[:, 1], cone[:, 2], color=RED, lw=1.0,
-             alpha=0.85, zorder=4)
-    for p in np.linspace(0, 2 * np.pi, 13)[:-1]:
+             alpha=0.9, zorder=4)
+    for p in (0.5 * np.pi, 1.5 * np.pi):
         v = spin(p)
-        axb.plot([0, v[0]], [0, v[1]], [0, v[2]], color=RED, lw=0.4,
-                 alpha=0.26, zorder=3)
+        axb.plot([0, v[0]], [0, v[1]], [0, v[2]], color=RED, lw=0.5,
+                 alpha=0.30, zorder=3)
     v0 = spin(0.86 * np.pi)
     axb.quiver(0, 0, 0, v0[0], v0[1], v0[2], color=RED, lw=1.7,
                arrow_length_ratio=0.16, zorder=6)
-    axb.text(v0[0] - 0.19, v0[1], v0[2] - 0.03, r"$\mathbf{s}$", color=RED,
-             fontsize=9, ha="center", zorder=7)
 
+    # the time average: the component along the field, of length cos alpha
     avg = cosa * n
-    axb.quiver(0, 0, 0, avg[0], avg[1], avg[2], color="#1a7f37", lw=1.8,
-               arrow_length_ratio=0.20, zorder=6)
-    axb.text(avg[0] - 0.24, avg[1], avg[2] + 0.02,
-             r"$\langle\mathbf{s}\rangle$", color="#1a7f37", fontsize=8.6,
-             ha="center", zorder=7)
+    axb.quiver(0, 0, 0, avg[0], avg[1], avg[2], color="#1a7f37", lw=2.4,
+               arrow_length_ratio=0.22, zorder=7)
     axb.plot([avg[0], avg[0]], [0, 0], [0, avg[2]], color=DARK,
              lw=0.9, ls=(0, (2.4, 2.0)), zorder=5)
-    axb.plot([avg[0]], [0], [0], marker="o", ms=3.4, color=DARK, zorder=7)
+    axb.plot([avg[0]], [0], [0], marker="o", ms=3.6, color=DARK, zorder=8)
 
     arc = np.linspace(0, alpha, 60)
-    r = 0.22
+    r = 0.42
     axb.plot(r * np.cos(arc), np.zeros_like(arc), r * np.sin(arc),
              color=GOLD, lw=1.0, zorder=5)
-    axb.text(0.30 * np.cos(alpha / 2), 0.0, 0.30 * np.sin(alpha / 2) - 0.04,
-             r"$\alpha$", color=GOLD, fontsize=9, zorder=7)
 
-    axb.set_xlim(-0.16, 1.50)
-    axb.set_ylim(-0.80, 0.80)
-    axb.set_zlim(-0.40, 1.22)
-    axb.set_box_aspect((1.52, 1.60, 1.62))
+    axb.set_xlim(-0.18, 1.40)
+    axb.set_ylim(-0.82, 0.82)
+    axb.set_zlim(-0.42, 1.24)
+    axb.set_box_aspect((1.58, 1.64, 1.66))
     axb.view_init(elev=15, azim=-68)
     axb.set_axis_off()
 
     # ------------------------------------------------------------ labels
-    fig.text(0.012, 0.972, "(a)", fontsize=8.5)
-    fig.text(0.082, 0.972, "one mode, one collective field",
+    fig.text(0.012, 0.958, "(a)", fontsize=8.5)
+    fig.text(0.082, 0.958, "one mode, one collective field",
              fontsize=7.2, color="#333333")
-    fig.text(0.012, 0.452, "(b)", fontsize=8.5)
-    fig.text(0.082, 0.452, "why the kernel is algebraic",
+    fig.text(0.012, 0.478, "(b)", fontsize=8.5)
+    fig.text(0.082, 0.478, "why the kernel is algebraic",
              fontsize=7.2, color="#333333")
 
-    fig.text(0.012, 0.500, r"cavity mode $\omega_c$", fontsize=7.0,
+    fig.text(0.012, 0.527, r"cavity mode $\omega_c$", fontsize=7.0,
              color=BLUE, ha="left")
-    fig.text(0.988, 0.500, r"spins shaded by $|\delta|$", fontsize=7.0,
+    fig.text(0.988, 0.527, r"spins shaded by $|\delta|$", fontsize=7.0,
              color=RED, ha="right")
-    fig.text(0.012, 0.012, "drive axis", fontsize=7.0, color=GREEN,
+    fig.text(0.012, 0.010, "drive axis", fontsize=7.0, color=GREEN,
              ha="left")
-    fig.text(0.988, 0.012, r"$\cos^{2}\alpha=W_{\rm c}(u)$", fontsize=7.2,
+    fig.text(0.988, 0.010, r"$\cos^{2}\alpha=W_{\rm c}(u)$", fontsize=7.2,
              color=DARK, ha="right")
 
+    # ---- the labels that sit on the drawing --------------------------------
+    # Each is anchored to the point of the construction it names.  Overlap is
+    # not judged here: resolve_label_clashes measures it from the rendered
+    # glyphs afterwards and moves whatever needs moving.
+    fig.canvas.draw()
+    label_at(fig, axa, (Sx0 + 4.10 * R, Sy0, Sz0), r"$\mathbf{S}$",
+             color=GREEN, fontsize=9.5, ha="center", va="center")
+    label_at(fig, axb, tuple(1.04 * np.array([1.0, 0.0, u0])),
+                r"$(\Omega,0,\delta)$", color=GOLD, fontsize=7.8,
+                ha="center", va="center")
+    label_at(fig, axb, (0.5, 0.0, u0), r"$\Omega$",
+                color=GOLD, fontsize=8.5, ha="center", va="center")
+    label_at(fig, axb, (1.0, 0.0, 0.5 * u0), r"$\delta$",
+                color=GOLD, fontsize=8.5, ha="center", va="center")
+    label_at(fig, axb,
+             (0.56 * np.cos(alpha / 2), 0.0, 0.56 * np.sin(alpha / 2)),
+             r"$\alpha$", offset=(0.0, 0.0), color=GOLD, fontsize=8.8,
+             ha="center", va="center")
+    label_at(fig, axb, tuple(v0), r"$\mathbf{s}$",
+                color=RED, fontsize=8.8, ha="center", va="center")
+    label_at(fig, axb, tuple(avg), r"$\langle\mathbf{s}\rangle$",
+                color="#1a7f37", fontsize=8.4, ha="center", va="center")
+    resolve_label_clashes(fig)
+    report_label_clashes(fig, "figL4_realization")
+    _report_clipping(fig, "figL4_realization")
     out = os.path.join(F, "figL4_realization")
     fig.savefig(out + ".pdf")
     fig.savefig(out + ".png", dpi=300)
