@@ -77,7 +77,7 @@ the second moment of the averaged kernel stops converging.
 
 ```bash
 pip install -e .
-pytest                       # 120 tests, about a minute
+pytest                       # 124 tests, about a minute
 ```
 
 Requires Python 3.9 or later, with `numpy`, `scipy`, `mpmath` and `matplotlib`.
@@ -182,6 +182,13 @@ Each writes a JSON record to `data/`. Every table in the paper is generated from
 those records rather than typed, so a table cannot disagree with the run behind
 it. The archived records and figures are deposited separately; see
 `CITATION.cff`.
+
+`14_letter_figures.py` also checks its own output and prints what it found. For
+the cavity figure it reports whether any label is printed on drawn content,
+whether all twelve edges of the box survive to the render, how much white space
+each panel title has under it, and whether anything runs off the canvas. All
+four are measured from the rendered pixels rather than from bounding boxes,
+which a text artist on a three dimensional axes reports out of date.
 
 ## License
 
