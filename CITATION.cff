@@ -7,7 +7,7 @@ abstract: >-
   tail, the criterion for the order of the transition, and the class resolved
   dynamics used to test the time averaged kernel against the full motion.
 type: software
-version: "1.0.5"
+version: "1.0.6"
 license: Apache-2.0
 authors:
   - family-names: Mahim
