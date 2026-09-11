@@ -1,7 +1,7 @@
 # lockkernel
 
-Reference implementation for **the locking kernel sets the synchronization
-exponent**.
+Reference implementation for **a single oscillator response sets the
+exponents of synchronization transitions**.
 
 A population of oscillators with spread frequencies begins to synchronize when
 the coupling passes a threshold, and the order parameter then grows from zero as
